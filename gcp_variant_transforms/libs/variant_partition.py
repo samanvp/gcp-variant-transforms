@@ -54,6 +54,23 @@ _MAX_NUM_REGIONS = 64
 _RESIDUAL_REGION_LITERAL = 'residual'
 _UNDEFINED_PARTITION_INDEX = -1
 
+_TABLE_NAME_REGEXP = re.compile(r'^[a-zA-Z0-9_]*$')
+# At most 100 output tables can be set as output of VariantTransform.
+_MAX_NUM_OUTPUT_TABLES = 100
+# Each output table can use up to 10 CHROM values to filter variants.
+_MAX_NUM_CHROM_VALUES = 10
+
+# yaml config file constants
+_OUTPUT_TABLE = 'output_table'
+_TABLE_NAME_SUFFIX = 'table_name_suffix'
+_CHROM_VALUES = 'CHROM_values'
+_TOTAL_BASE_PAIRS = 'total_base_pairs'
+
+
+# BQ commands needed for migration to schema V2
+BQ_GET_SCHEMA='bq show --schema --format=prettyjson {SOURCE_FULL_TABLE_ID} > {TEMP_SCHEMA_JSON}'
+BQ_CREATE_PARTITIONED_TABLE='bq mk --table --range_partitioning=start_position,0,{TOTAL_BASE_PAIRS},{PARTITION_SIZE} --clustering_fields=end_position {DEST_FULL_TABLE_ID} {TEMP_SCHEMA_JSON}'
+BQ_WRITE_TO_TABLE='bq query --nouse_legacy_sql --destination_table={DEST_FULL_TABLE_ID} --append_table --schema_update_option=ALLOW_FIELD_RELAXATION "SELECT * EXCEPT({DATE_COLUMN}) FROM `{SOURCE_FULL_TABLE_ID_DOT}`"'
 
 class _ChromosomePartitioner(object):
   """Assigns partition indices to multiple regions inside a chromosome.
@@ -289,3 +306,178 @@ class VariantPartition(object):
       return self._partition_names[partition_index]
     else:
       return None
+
+
+class _ConfigParser(object):
+  """Parsers partitioning yaml config file."""
+
+  def __init__(self, config_file_path=None):
+    if not config_file_path or not config_file_path.strip():
+      raise ValueError('You must provide path to a yaml config file.')
+
+    # Residual partition will contain all remaining variants that do not match
+    # to any other partition.
+    self._num_output_tables = 0
+    self._residual_index = _UNDEFINED_PARTITION_INDEX
+    self._should_keep_residual = False
+    self._chrom_to_output_table_index = {}
+    self._table_name_suffixes = []
+    self._total_base_pairs = []
+
+    self._parse_config(config_file_path)
+
+  def _is_residual_table(self, chrom_values):
+    # type: (List[str]) -> bool
+    return (len(chrom_values) == 1 and
+            chrom_values[0].strip().lower() == _RESIDUAL_REGION_LITERAL)
+
+  def _validate_config(self, config_file_path):
+    # type: (str) -> None
+    with FileSystems.open(config_file_path, 'r') as f:
+      try:
+        output_tables = yaml.load(f)
+      except yaml.YAMLError as e:
+        raise ValueError('Invalid yaml file: {} .'.format(str(e)))
+    if len(output_tables) > _MAX_NUM_OUTPUT_TABLES:
+      raise ValueError(
+          'There can be at most {} output tables but given config file '
+          'contains {} .'.format(_MAX_NUM_OUTPUT_TABLES, len(output_tables)))
+    if not output_tables:
+      raise ValueError('At least one output table is needed in config file.')
+
+    existing_suffixes = set()
+    existing_chrom_values = set()
+    residual_partition_index = _UNDEFINED_PARTITION_INDEX
+    for item in output_tables:
+      output_table = item.get(_OUTPUT_TABLE, None)
+      if output_table is None:
+        raise ValueError('Wrong yaml file format, {} field missing.'.format(
+          _OUTPUT_TABLE))
+      # Validate table_name_suffix
+      table_name_suffix = output_table.get(_TABLE_NAME_SUFFIX)
+      if not table_name_suffix:
+        raise ValueError('Wrong yaml file format, {} field missing.'.format(
+          _TABLE_NAME_SUFFIX))
+      table_name_suffix = table_name_suffix.strip()
+      if not table_name_suffix:
+        raise ValueError('table_name_suffix can not be empty string.')
+      if not _TABLE_NAME_REGEXP.match(table_name_suffix):
+        raise ValueError('BigQuery table name can only contain letters (upper '
+                         'or lower case), numbers, and underscores.')
+      if table_name_suffix in existing_suffixes:
+        raise ValueError('Table name suffixes must be unique, '
+                         '{} is duplicated.'.format(table_name_suffix))
+      existing_suffixes.add(table_name_suffix)
+      # Validate CHROM_values
+      chrom_values = output_table.get(_CHROM_VALUES, None)
+      if chrom_values is None:
+        raise ValueError('Wrong yaml file format, {} field missing.'.format(
+          _CHROM_VALUES))
+      if len(chrom_values) > _MAX_NUM_CHROM_VALUES:
+        raise ValueError(
+          'At most {} CHROM values per output table is allowed: {}.'.format(_MAX_NUM_CHROM_VALUESS, chrom_values))
+      if self._is_residual_table(chrom_values):
+        if residual_partition_index != _UNDEFINED_PARTITION_INDEX:
+          raise ValueError('There can be only one residual output table.')
+        residual_partition_index += 1
+      for value in chrom_values:
+        value = value.strip().lower()
+        if not value:
+          raise ValueError('CHROM_value can not be empty string.')
+        if value in existing_chrom_values:
+          raise ValueError(
+            'chrom_values must be unique in config file: {} .'.format(value))
+        existing_chrom_values.add(value)
+
+      # Validate total_base_pairs
+      total_base_pairs = output_table.get(_TOTAL_BASE_PAIRS, None)
+      if not total_base_pairs:
+        raise ValueError('Wrong yaml file format, {} field missing.'.format(
+          _TOTAL_BASE_PAIRS))
+      if type(total_base_pairs) is not int or total_base_pairs <= 0:
+        raise ValueError('Each output table needs an int total_base_pairs > 0.')
+    return output_tables
+
+  def _parse_config(self, config_file_path):
+    # type: (str) -> None
+    """Parses the given partitioning config file.
+
+    Args:
+      config_file_path: name of the input partition_config file.
+    Raises:
+      A ValueError if any of the expected config formats are violated.
+    """
+    output_tables = self._validate_config(config_file_path)
+
+    self._num_output_tables = len(output_tables)
+    for table_index in range(self._num_output_tables):
+      output_table = output_tables[table_index].get(_OUTPUT_TABLE)
+      # Store table_name_suffix
+      self._table_name_suffixes.insert(
+        table_index, output_table.get(_TABLE_NAME_SUFFIX).strip())
+      # Store chrom_values
+      chrom_values = output_table.get(_CHROM_VALUES, None)
+      if self._is_residual_table(chrom_values):
+        self._residual_index = table_index
+        self._should_keep_residual = True
+        continue
+      for values in chrom_values:
+        values = values.strip().lower()
+        self._chrom_to_output_table_index[values] = table_index
+      # Store num_base_pairs
+      self._total_base_pairs.insert(table_index,
+                                    output_table.get(_TOTAL_BASE_PAIRS))
+
+    if self._residual_index == _UNDEFINED_PARTITION_INDEX:
+      # We add an extra dummy partition for residuals.
+      # Note, here self._should_keep_residual is False.
+      self._residual_index = self._num_output_tables
+      self._num_output_tables += 1
+
+  def get_num_partitions(self):
+    # type: (None) -> int
+    return self._num_output_tables
+
+  def get_output_table_index(self, chrom):
+    # type: (str) -> int
+    """Returns output table index for the given chrom value."""
+    index = self._chrom_to_output_table_index.get(chrom, None)
+    if not index:
+      index = self._residual_index
+    return index
+
+  def should_keep_output_table(self, output_table_index):
+    # type: (int) -> bool
+    """Returns False only for dummy extra residual partition (if was added)."""
+    if output_table_index != self._residual_index:
+      return True
+    else:
+      return self._should_keep_residual
+
+  def _is_index_in_the_range(self, output_table_index):
+    if output_table_index < 0:
+      return False
+    if self._should_keep_residual:
+      if output_table_index >= self._num_output_tables:
+        return False
+    else:
+      if output_table_index >= self._num_output_tables - 1:
+        return False
+    return True
+
+  def get_output_table_suffix(self, output_table_index):
+    # type: (int) -> Optional[str]
+    if not self._is_index_in_the_range(partition_index):
+      raise ValueError(
+        'Given output index {} is outside of expected range: '
+        '[0, {}]'.format(output_table_index, self._num_output_tables))
+    return self._table_name_suffixes[output_table_index]
+
+  def get_output_table_num_base_pairs(self, output_table_index):
+    # type: (int) -> Optional[int]
+    if not self._is_index_in_the_range(partition_index):
+      raise ValueError(
+        'Given output index {} is outside of expected range: '
+        '[0, {}]'.format(output_table_index, self._num_output_tables))
+    return self._num_base_paris[output_table_index]
+

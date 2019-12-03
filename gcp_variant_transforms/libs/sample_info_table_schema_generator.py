@@ -14,6 +14,8 @@
 
 """Generates sample_info table schema."""
 
+import math
+
 from apache_beam.io.gcp.internal.clients import bigquery
 
 from gcp_variant_transforms.libs import bigquery_util
@@ -28,6 +30,21 @@ def compose_table_name(base_name, suffix):
   # type: (str, List[str]) -> str
   return '_'.join([base_name, suffix])
 
+_TOTAL_BASE_PAIRS_SIG_DIGITS = 4
+_PARTITION_SIZE_SIG_DIGITS = 1
+_NUM_BQ_RANGE_PARTITIONS = 4000
+
+def calculate_optimize_partition_size(total_base_pairs):
+  # These two operations adds [10^4, 2 * 10^4) buffer to total_base_pairs.
+  total_base_pairs += math.pow(10, _TOTAL_BASE_PAIRS_SIG_DIGITS)
+  total_base_pairs = (
+      math.ceil(total_base_pairs / math.pow(10, _TOTAL_BASE_PAIRS_SIG_DIGITS)) *
+      math.pow(10, _TOTAL_BASE_PAIRS_SIG_DIGITS))
+  # We use 4000 - 1 = 3999 partitions just to avoid hitting the BQ limits.
+  partition_size = total_base_pairs / (_NUM_BQ_RANGE_PARTITIONS - 1)
+  # This operation adds another [0, 10 * 3999) buffer to the total_base_pairs.
+  return (math.ceil(partition_size / pow(10, _PARTITION_SIZE_SIG_DIGITS)) *
+          math.pow(10, _PARTITION_SIZE_SIG_DIGITS))
 
 def generate_schema():
   # type: () -> bigquery.TableSchema

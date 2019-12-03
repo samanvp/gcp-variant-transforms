@@ -410,3 +410,231 @@ class VariantPartitionTest(unittest.TestCase):
       _ = variant_partition.VariantPartition(
           tempdir.create_temp_file(suffix='.yaml',
                                    lines='\n'.join(dup_table_name)))
+
+
+  def test_config_failed_missing_fields(self):
+    tempdir = temp_dir.TempDir()
+    missing_output_table = [
+        '-  missing___output_table:',
+        '     table_name_suffix: "chr1"',
+        '     CHROM_values:',
+        '       - "chr1"',
+        '       - "1"',
+        '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Wrong yaml file format, output_table field missing.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(missing_output_table)))
+
+    missing_table_name_suffix = [
+        '-  output_table:',
+        '     CHROM_values:',
+        '       - "chr1"',
+        '       - "1"',
+        '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Wrong yaml file format, table_name_suffix field missing.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(missing_table_name_suffix)))
+
+    missing_chrom_values = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Wrong yaml file format, CHROM_values field missing.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(missing_chrom_values)))
+
+    missing_filters = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Wrong yaml file format, CHROM_values field missing.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(missing_filters)))
+
+    missing_total_base_pairs = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - "1"',
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Wrong yaml file format, total_base_pairs field missing.'):
+      _ = variant_partition._ConfigParser(
+          tempdir.create_temp_file(suffix='.yaml',
+                                   lines='\n'.join(missing_total_base_pairs)))
+
+
+  def test_config_failed_wrong_fields(self):
+    tempdir = temp_dir.TempDir()
+    empty_suffix = [
+      '-  output_table:',
+      '     table_name_suffix: " "',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - "1"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'table_name_suffix can not be empty string.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(empty_suffix)))
+    tempdir = temp_dir.TempDir()
+
+    wrong_table_name = [
+      '-  output_table:',
+      '     table_name_suffix: "chr#"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - "1"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError, 'BigQuery table name can only contain letters *'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(wrong_table_name)))
+    tempdir = temp_dir.TempDir()
+
+    duplicate_suffix = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '     total_base_pairs: 249240615',
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr2"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Table name suffixes must be unique, chr1 is duplicated.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(duplicate_suffix)))
+    tempdir = temp_dir.TempDir()
+
+    empty_chrom_value = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - " "',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'CHROM_value can not be empty string.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(empty_chrom_value)))
+    tempdir = temp_dir.TempDir()
+
+    duplicate_chrom_value1 = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "dup_value"',
+      '       - "dup_value"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'chrom_values must be unique in config file: dup_value .'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(duplicate_chrom_value1)))
+
+    duplicate_chrom_value2 = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "dup_value"',
+      '     total_base_pairs: 249240615',
+      '-  output_table:',
+      '     table_name_suffix: "chr2"',
+      '     CHROM_values:',
+      '       - "dup_value"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'chrom_values must be unique in config file: dup_value .'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(duplicate_chrom_value2)))
+
+    duplicate_residual = [
+      '-  output_table:',
+      '     table_name_suffix: "residual1"',
+      '     CHROM_values:',
+      '       - "residual"',
+      '     total_base_pairs: 249240615',
+      '-  output_table:',
+      '     table_name_suffix: "residual2"',
+      '     CHROM_values:',
+      '       - "residual"',
+      '     total_base_pairs: 249240615'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'There can be only one residual output table.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(duplicate_residual)))
+
+    not_int_total_base_pairs = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - "1"',
+      '     total_base_pairs: "not int"'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Each output table needs an int total_base_pairs > 0.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(not_int_total_base_pairs)))
+
+    not_pos_total_base_pairs = [
+      '-  output_table:',
+      '     table_name_suffix: "chr1"',
+      '     CHROM_values:',
+      '       - "chr1"',
+      '       - "1"',
+      '     total_base_pairs: -10'
+    ]
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Each output table needs an int total_base_pairs > 0.'):
+      _ = variant_partition._ConfigParser(
+        tempdir.create_temp_file(suffix='.yaml',
+                                 lines='\n'.join(not_pos_total_base_pairs)))
+
+
+
+

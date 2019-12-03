@@ -1,125 +1,150 @@
--  partition:
-     partition_name: "chr1"
-     regions:
+-  output_table:
+     table_name_suffix: "chr1"
+     CHROM_values:
        - "chr1"
        - "1"
--  partition:
-     partition_name: "chr2"
-     regions:
+     total_base_pairs: 249240615
+-  output_table:
+     table_name_suffix: "chr2"
+     CHROM_values:
        - "chr2"
        - "2"
--  partition:
-     partition_name: "chr3"
-     regions:
+     total_base_pairs: 243189284
+-  output_table:
+     table_name_suffix: "chr3"
+     CHROM_values:
        - "chr3"
        - "3"
--  partition:
-     partition_name: "chr4"
-     regions:
+     total_base_pairs: 197961643
+-  output_table:
+     table_name_suffix: "chr4"
+     CHROM_values:
        - "chr4"
        - "4"
--  partition:
-     partition_name: "chr5"
-     regions:
+     total_base_pairs: 191044274
+-  output_table:
+     table_name_suffix: "chr5"
+     CHROM_values:
        - "chr5"
        - "5"
--  partition:
-     partition_name: "chr6"
-     regions:
+     total_base_pairs: 180905191
+-  output_table:
+     table_name_suffix: "chr6"
+     CHROM_values:
        - "chr6"
        - "6"
--  partition:
-     partition_name: "chr7"
-     regions:
+     total_base_pairs: 171053767
+-  output_table:
+     table_name_suffix: "chr7"
+     CHROM_values:
        - "chr7"
        - "7"
--  partition:
-     partition_name: "chr8"
-     regions:
+     total_base_pairs: 159128660
+-  output_table:
+     table_name_suffix: "chr8"
+     CHROM_values:
        - "chr8"
        - "8"
--  partition:
-     partition_name: "chr9"
-     regions:
+     total_base_pairs: 146303973
+-  output_table:
+     table_name_suffix: "chr9"
+     CHROM_values:
        - "chr9"
        - "9"
-
--  partition:
-     partition_name: "chr10"
-     regions:
+     total_base_pairs: 141149922
+-  output_table:
+     table_name_suffix: "chr10"
+     CHROM_values:
        - "chr10"
        - "10"
--  partition:
-     partition_name: "chr11"
-     regions:
+     total_base_pairs: 135524745
+-  output_table:
+     table_name_suffix: "chr11"
+     CHROM_values:
        - "chr11"
        - "11"
--  partition:
-     partition_name: "chr12"
-     regions:
+     total_base_pairs: 134946513
+-  output_table:
+     table_name_suffix: "chr12"
+     CHROM_values:
        - "chr12"
        - "12"
--  partition:
-     partition_name: "chr13"
-     regions:
+     total_base_pairs: 133841700
+-  output_table:
+     table_name_suffix: "chr13"
+     CHROM_values:
        - "chr13"
        - "13"
--  partition:
-     partition_name: "chr14"
-     regions:
+     total_base_pairs: 115109876
+-  output_table:
+     table_name_suffix: "chr14"
+     CHROM_values:
        - "chr14"
        - "14"
--  partition:
-     partition_name: "chr15"
-     regions:
+     total_base_pairs: 107289538
+-  output_table:
+     table_name_suffix: "chr15"
+     CHROM_values:
        - "chr15"
        - "15"
--  partition:
-     partition_name: "chr16"
-     regions:
+     total_base_pairs: 102521390
+-  output_table:
+     table_name_suffix: "chr16"
+     CHROM_values:
        - "chr16"
        - "16"
--  partition:
-     partition_name: "chr17"
-     regions:
+     total_base_pairs: 90294745
+-  output_table:
+     table_name_suffix: "chr17"
+     CHROM_values:
        - "chr17"
        - "17"
--  partition:
-     partition_name: "chr18"
-     regions:
+     total_base_pairs: 81195200
+-  output_table:
+     table_name_suffix: "chr18"
+     CHROM_values:
        - "chr18"
        - "18"
--  partition:
-     partition_name: "chr19"
-     regions:
+     total_base_pairs: 78017161
+-  output_table:
+     table_name_suffix: "chr19"
+     CHROM_values:
        - "chr19"
        - "19"
--  partition:
-     partition_name: "chr20"
-     regions:
+     total_base_pairs: 59118975
+-  output_table:
+     table_name_suffix: "chr20"
+     CHROM_values:
        - "chr20"
        - "20"
--  partition:
-     partition_name: "chr21"
-     regions:
+     total_base_pairs: 62965515
+-  output_table:
+     table_name_suffix: "chr21"
+     CHROM_values:
        - "chr21"
        - "21"
--  partition:
-     partition_name: "chr22"
-     regions:
+     total_base_pairs: 48119890
+-  output_table:
+     table_name_suffix: "chr22"
+     CHROM_values:
        - "chr22"
        - "22"
--  partition:
-     partition_name: "chrX"
-     regions:
+     total_base_pairs: 51244528
+-  output_table:
+     table_name_suffix: "chrX"
+     CHROM_values:
        - "chrX"
        - "x"
--  partition:
-     partition_name: "chrY"
-     regions:
+     total_base_pairs: 155260473
+-  output_table:
+     table_name_suffix: "chrY"
+     CHROM_values:
        - "chrY"
        - "y"
--  partition:
-     partition_name: "residual"
-     regions:
+     total_base_pairs: 57227415
+-  output_table:
+     table_name_suffix: "residual"
+     CHROM_values:
        - "residual"
+     total_base_pairs: 249240615
+

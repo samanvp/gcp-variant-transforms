@@ -23,6 +23,7 @@ from gcp_variant_transforms.beam_io import vcfio
 from gcp_variant_transforms.libs import bigquery_sanitizer
 from gcp_variant_transforms.libs import bigquery_util
 from gcp_variant_transforms.libs import sample_info_table_schema_generator
+from gcp_variant_transforms.libs import variant_partition
 
 
 class VariantTransformsOptions(object):
@@ -237,6 +238,72 @@ class BigQueryWriteOptions(VariantTransformsOptions):
                                                 project_id,
                                                 dataset_id,
                                                 table_id)
+
+
+class MigrateToSchemaV2(VariantTransformsOptions):
+  """Options for migrating existing tables to new V2 schema table."""
+
+  def add_arguments(self, parser):
+    # type: (argparse.ArgumentParser) -> None
+    parser.add_argument('--input_table',
+                        default='',
+                        help='Source BigQuery table in V1 schema.')
+  def add_arguments(self, parser):
+    # type: (argparse.ArgumentParser) -> None
+    parser.add_argument('--output_table_based_name',
+                        default='',
+                        help=('BigQuery table base name, multiple tables will '
+                              'be made according the --partition_config_path.'))
+  def add_arguments(self, parser):
+    parser.add_argument(
+        '--partition_config_path',
+        default='',
+        help=('File containing list of partitions and output table names. You '
+              'can use provided default partition_config file to split output '
+              'by chromosome (one table per chromosome) which is located at: '
+              'gcp_variant_transforms/data/partition_configs/'
+              'homo_sapiens_default.yaml'))
+  def add_arguments(self, parser):
+    # type: (argparse.ArgumentParser) -> None
+    parser.add_argument('--dummy_date_column_name',
+                        default='',
+                        help=('V1 schema was utilizing a dummy date column '
+                              'which was needed for BQ clustering, this column '
+                              'will be removed in the output table.'))
+  def validate(self, parsed_args, client=None):
+    # type: (argparse.Namespace, bigquery.BigqueryV2) -> None
+    if not (parsed_args.input_table and parsed_args.output_table_base_name):
+      raise ValueError('You must set both --input_table and '
+                       '--output_table_base_name to run migration tool.')
+    if not parsed_args.partition_config_path:
+      raise ValueError('You must provide --partition_config_path to migrate.')
+    if not parsed_args.dummy_date_column_name:
+      raise ValueError('You must provide --dummy_date_column_name to migrate.')
+
+    if not client:
+      credentials = GoogleCredentials.get_application_default().create_scoped(
+          ['https://www.googleapis.com/auth/bigquery'])
+      client = bigquery.BigqueryV2(credentials=credentials)
+
+    project_id, dataset_id, table_id = bigquery_util.parse_table_reference(
+        parsed_args.input_table)
+    bigquery_util.raise_error_if_table_not_exists(
+        client, project_id, dataset_id, table_id)
+
+    project_id, dataset_id, table_id = bigquery_util.parse_table_reference(
+        parsed_args.output_table_base_name)
+
+    bigquery_util.raise_error_if_dataset_not_exists(client, project_id,
+                                                    dataset_id)
+    partitioner = variant_partition._ConfigParser(
+        parsed_args.partition_config_path)
+    for index in range(partitioner.get_num_partitions()):
+      sub_table_id = sample_info_table_schema_generator.compose_table_name(
+          table_id, partitioner.get_output_table_suffix(index))
+      bigquery_util.raise_error_if_table_exists(client,
+                                                project_id,
+                                                dataset_id,
+                                                sub_table_id)
 
 
 class AnnotationOptions(VariantTransformsOptions):
