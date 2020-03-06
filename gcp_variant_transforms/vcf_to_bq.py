@@ -510,40 +510,35 @@ def run(argv=None):
   metrics_util.log_all_counters(result)
 
   # After pipeline is done, create output tables and load AVRO files into them.
-  schema_file = _write_schema_to_temp_file(schema)
+  #schema_file = _write_schema_to_temp_file(schema)
   suffixes = []
+  total_base_pairs = []
+  for i in range(num_shards):
+    suffixes.append(sharding.get_output_table_suffix(i))
+    total_base_pairs.append(sharding.get_output_table_total_base_pairs(i))
+  load_avro = pipeline_common.LoadAvro(schema_converter.convert_table_schema_to_bq_schema(schema),
+                                       avro_root_path, known_args.output_table,
+                                       suffixes, total_base_pairs)
   try:
-    for i in range(num_shards):
-      table_suffix = sharding.get_output_table_suffix(i)
-      suffixes.append(table_suffix)
-      table_name = sample_info_table_schema_generator.compose_table_name(
-          known_args.output_table, table_suffix)
-      if not known_args.append:
-        pipeline_common.create_output_table(
-            table_name,
-            sharding.get_output_table_total_base_pairs(i),
-            schema_file)
-        logging.info('Integer range partitioned table %s was created.',
-                     table_name)
-    pipeline_common.load_avro_to_output_tables(
-        avro_root_path, known_args.output_table, suffixes)
+    if not known_args.append:
+      load_avro.create_range_partitioned_tables()
+      logging.info('Start to load AVRO files to BigQuery tables ...')
+    load_avro.start_loading()
   except Exception as e:
     logging.error('Something unexpected happened during the loading of AVRO '
                   'files to BigQuery: %s', str(e))
-    logging.warning('Trying to revert as much as possible.')
-    for suffix in suffixes:
-      table_name = sample_info_table_schema_generator.compose_table_name(
-          known_args.output_table, suffix)
-      if known_args.append:
-        logging.warning('Since tables were appended, cannot revert the change'
-                        'in this table: %s', table_name)
-      else:
-        if pipeline_common.delete_table(table_name) != 0:
-          logging.error('Failed to delete table: %s', table_name)
-        else:
-          logging.info('Table was successfully deleted: %s', table_name)
-    logging.info('Since write to BQ stage failed, we do not delete AVRO files. '
-                 'You can find them located at: %s', avro_root_path)
+    logging.warning('Trying to revert as much as possible...')
+    if known_args.append:
+      logging.warning(
+          'Since tables were appended, cannot revert added rows. You can use '
+          'BigQuery snapshot decorators to recover your table up to 7 days '
+          'ago. For more information please refer to: '
+          'https://cloud.google.com/bigquery/table-decorators')
+    else:
+      load_avro.delete_tables()
+
+    logging.info('Since write to BigQuery stage failed, we do not delete AVRO '
+                 'files. You can find them located at: %s', avro_root_path)
     raise e
   else:
     logging.warning('All AVRO files were successfully loaded to BigQuery.')

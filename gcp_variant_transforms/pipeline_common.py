@@ -18,8 +18,9 @@ It includes parsing the command line arguments, reading the input, applying the
 PTransforms and writing the output.
 """
 
-from typing import List  # pylint: disable=unused-import
+from typing import Any, List, Mapping, Sequence  # pylint: disable=unused-import
 import argparse
+import logging
 import enum
 import os
 import shlex
@@ -34,6 +35,7 @@ from apache_beam.io import filesystem
 from apache_beam.io import filesystems
 from apache_beam.options import pipeline_options
 from apache_beam.runners.direct import direct_runner
+from google.cloud import bigquery
 
 from gcp_variant_transforms.beam_io import bgzf_io
 from gcp_variant_transforms.beam_io import vcf_estimate_io
@@ -64,6 +66,8 @@ _BQ_DELETE_TABLE_COMMAND = 'bq rm -f -t {FULL_TABLE_ID}'
 _GCS_DELETE_FILES_COMMAND = 'gsutil -m rm -f -R {ROOT_PATH}'
 _BQ_LOAD_JOB_NUM_RETRIES = 5
 _MAX_NUM_CONCURRENT_BQ_LOAD_JOBS = 4
+_PARTITIONING_FIELD = 'start_position'
+_CLUSTERING_FIELDS = ['start_position', 'end_position']
 
 
 class PipelineModes(enum.Enum):
@@ -373,6 +377,116 @@ def create_output_table(full_table_id, total_base_pairs, schema_file_path):
     raise ValueError(
         'Failed to create a bigquery table using "{}" command.'.format(
             bq_command))
+
+
+class LoadAvro:
+  def __init__(self, schema, avro_root_path, table_base_name, suffixes, total_base_pairs):
+    # type: (Sequence[Mapping[str, Any]], str, str, List[str], List[int]) -> None
+    assert len(suffixes) == len(total_base_pairs)
+
+    self._schema = schema
+    self._avro_root_path = avro_root_path
+    self._table_base_name = table_base_name.replace(':', '.')
+    self._suffixes = suffixes
+    self._total_base_pairs = total_base_pairs
+
+    self._created_tables = []
+    self._client = bigquery.Client()
+
+  def delete_tables(self):
+    for table_id in self._created_tables:
+      try:
+        self._client.delete_table(table_id)
+      except Exception as e:
+        logging.error('Failed to delete table: %s due to this error: %s',
+                      table_id, str(e))
+      else:
+        logging.info('Table was successfully deleted: %s', table_id)
+
+  def create_range_partitioned_tables(self):
+    for i in range(len(self._suffixes)):
+      table_id = sample_info_table_schema_generator.compose_table_name(
+          self._table_base_name, self._suffixes[i])
+      (partition_size, total_base_pairs_enlarged) = (
+        bigquery_util.calculate_optimal_partition_size(
+          self._total_base_pairs[i]))
+      try:
+        table = bigquery.Table(table_id, schema=self._schema)
+        table.range_partitioning = bigquery.RangePartitioning(
+            field=_PARTITIONING_FIELD,
+            range_=bigquery.PartitionRange(start=0,
+                                           end=total_base_pairs_enlarged,
+                                           interval=partition_size))
+        table.clustering_fields = _CLUSTERING_FIELDS
+        table = self._client.create_table(table)  # Make an API request.
+      except Exception as e:
+        logging.error('Something unexpected happened during creating table: %s',
+                      str(e))
+        raise e
+      else:
+        logging.info('Created integer range partitioned table %s.%s.%s',
+                     table.project, table.dataset_id, table.table_id)
+        self._created_tables.append(table_id)
+    logging.info('All tables were successfully created.')
+
+
+  def start_loading(self):
+    self._num_retries = 0
+    self._suffixes_to_job = {}  # type: Dict[str, bigquery.job.LoadJob]
+    self._remaining_suffixes = self._suffixes
+    # We run _MAX_NUM_CONCURRENT_BQ_LOAD_JOBS load jobs in parallel.
+    for _ in range(_MAX_NUM_CONCURRENT_BQ_LOAD_JOBS):
+      self._start_one_load_job(self._remaining_suffixes.pop())
+
+    self._monitor_jobs()
+
+  def _start_one_load_job(self, suffix):
+    job_config = bigquery.LoadJobConfig(
+        source_format=bigquery.SourceFormat.AVRO)
+    uri = self._avro_root_path + suffix + '-*'
+    table_id = sample_info_table_schema_generator.compose_table_name(
+        self._table_base_name, suffix)
+    load_job = self._client.load_table_from_uri(
+        uri, table_id, job_config=job_config)
+    self._suffixes_to_job.update({suffix: load_job})
+
+  def _cancel_all_running_jobs(self):
+    for _, load_job in self._suffixes_to_job.items():
+      load_job.cancel()
+
+  def _handle_failed_load_job(self, suffix, load_job):
+    if self._num_retries < _BQ_LOAD_JOB_NUM_RETRIES:
+      self._num_retries += 1
+      # Retry the failed job after 5 minutes wait.
+      time.sleep(300)
+      self._start_one_load_job(suffix)
+    else:
+      # Jobs have failed more than _BQ_LOAD_JOB_NUM_RETRIES, cancel all jobs.
+      self._cancel_all_running_jobs()
+      table_id = sample_info_table_schema_generator.compose_table_name(
+        self._table_base_name, suffix)
+      job_id = load_job.path
+      errors = load_job.errors
+      raise ValueError(
+        'Failed to load AVRO to BigQuery table {} \n state: {} \n '
+        'job_id: {} \n errors: {}.'.format(table_id, state, job_id,
+                                           '\n'.join(errors)))
+  def _monitor_jobs(self):
+    # Waits until current jobs are done and then add remaining jobs one by one.
+    while self._suffixes_to_job:
+      time.sleep(60)
+      processed_suffixes = self._suffixes_to_job.keys()
+      for suffix in processed_suffixes:
+        load_job = self._suffixes_to_job.get(suffix)
+        if load_job.done():
+          del self._suffixes_to_job[suffix]
+          state = load_job.state
+          if state != 'DONE':
+            self._handle_failed_load_job(suffix, load_job)
+          else:
+            if self._remaining_suffixes:
+              next_suffix = self._remaining_suffixes.pop()
+              self._start_one_load_job(next_suffix)
 
 
 def _run_one_load_job(avro_root_path, table_base_name, suffix):

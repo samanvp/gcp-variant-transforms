@@ -21,8 +21,9 @@ import json
 import logging
 from typing import Dict, Union  # pylint: disable=unused-import
 
-from apache_beam.io.gcp.internal.clients import bigquery
+from apache_beam.io.gcp.internal.clients import bigquery as beam_bigquery
 from apitools.base.protorpclite import messages  # pylint: disable=unused-import
+from google.cloud import bigquery
 
 from gcp_variant_transforms.beam_io import vcfio
 from gcp_variant_transforms.beam_io import vcf_header_io
@@ -62,7 +63,7 @@ def generate_schema_from_header_fields(
     proc_variant_factory,  # type: processed_variant.ProcessedVariantFactory
     variant_merger=None  # type: variant_merge_strategy.VariantMergeStrategy
     ):
-  # type: (...) -> bigquery.TableSchema
+  # type: (...) -> beam_bigquery.TableSchema
   """Returns a ``TableSchema`` for the BigQuery table storing variants.
 
   Args:
@@ -74,43 +75,43 @@ def generate_schema_from_header_fields(
     variant_merger: The strategy used for merging variants (if any). Some
       strategies may change the schema, which is why this may be needed here.
   """
-  schema = bigquery.TableSchema()
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema = beam_bigquery.TableSchema()
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.REFERENCE_NAME,
       type=bigquery_util.TableFieldConstants.TYPE_STRING,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description='Reference name.'))
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.START_POSITION,
       type=bigquery_util.TableFieldConstants.TYPE_INTEGER,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description=('Start position (0-based). Corresponds to the first base '
                    'of the string of reference bases.')))
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.END_POSITION,
       type=bigquery_util.TableFieldConstants.TYPE_INTEGER,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description=('End position (0-based). Corresponds to the first base '
                    'after the last base in the reference allele.')))
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.REFERENCE_BASES,
       type=bigquery_util.TableFieldConstants.TYPE_STRING,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description='Reference bases.'))
   schema.fields.append(proc_variant_factory.create_alt_bases_field_schema())
 
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.NAMES,
       type=bigquery_util.TableFieldConstants.TYPE_STRING,
       mode=bigquery_util.TableFieldConstants.MODE_REPEATED,
       description='Variant names (e.g. RefSNP ID).'))
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.QUALITY,
       type=bigquery_util.TableFieldConstants.TYPE_FLOAT,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description=('Phred-scaled quality score (-10log10 prob(call is wrong)). '
                    'Higher values imply better quality.')))
-  schema.fields.append(bigquery.TableFieldSchema(
+  schema.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.FILTER,
       type=bigquery_util.TableFieldConstants.TYPE_STRING,
       mode=bigquery_util.TableFieldConstants.MODE_REPEATED,
@@ -118,23 +119,23 @@ def generate_schema_from_header_fields(
                    'variant has passed all filters.')))
 
   # Add calls.
-  calls_record = bigquery.TableFieldSchema(
+  calls_record = beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.CALLS,
       type=bigquery_util.TableFieldConstants.TYPE_RECORD,
       mode=bigquery_util.TableFieldConstants.MODE_REPEATED,
       description='One record for each call.')
-  calls_record.fields.append(bigquery.TableFieldSchema(
+  calls_record.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.CALLS_SAMPLE_ID,
       type=bigquery_util.TableFieldConstants.TYPE_INTEGER,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
       description='Name of the call.'))
-  calls_record.fields.append(bigquery.TableFieldSchema(
+  calls_record.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.CALLS_GENOTYPE,
       type=bigquery_util.TableFieldConstants.TYPE_INTEGER,
       mode=bigquery_util.TableFieldConstants.MODE_REPEATED,
       description=('Genotype of the call. "-1" is used in cases where the '
                    'genotype is not called.')))
-  calls_record.fields.append(bigquery.TableFieldSchema(
+  calls_record.fields.append(beam_bigquery.TableFieldSchema(
       name=bigquery_util.ColumnKeyConstants.CALLS_PHASESET,
       type=bigquery_util.TableFieldConstants.TYPE_STRING,
       mode=bigquery_util.TableFieldConstants.MODE_NULLABLE,
@@ -145,7 +146,7 @@ def generate_schema_from_header_fields(
     # GT and PS are already included in 'genotype' and 'phaseset' fields.
     if key in (vcfio.GENOTYPE_FORMAT_KEY, vcfio.PHASESET_FORMAT_KEY):
       continue
-    calls_record.fields.append(bigquery.TableFieldSchema(
+    calls_record.fields.append(beam_bigquery.TableFieldSchema(
         name=bigquery_sanitizer.SchemaSanitizer.get_sanitized_field_name(key),
         type=bigquery_util.get_bigquery_type_from_vcf_type(
             field[_HeaderKeyConstants.TYPE]),
@@ -167,7 +168,7 @@ def generate_schema_from_header_fields(
         proc_variant_factory.info_is_in_alt_bases(key) or
         key in annotation_info_type_keys_set):
       continue
-    schema.fields.append(bigquery.TableFieldSchema(
+    schema.fields.append(beam_bigquery.TableFieldSchema(
         name=bigquery_sanitizer.SchemaSanitizer.get_sanitized_field_name(key),
         type=bigquery_util.get_bigquery_type_from_vcf_type(
             field[_HeaderKeyConstants.TYPE]),
@@ -232,7 +233,7 @@ def _convert_field_to_avro_dict(field):
 
 
 def _convert_schema_to_avro_dict(schema):
-  # type: (bigquery.TableSchema) -> Dict
+  # type: (beam_bigquery.TableSchema) -> Dict
   fields_dict = {}
   # TODO(bashir2): Check if we need `namespace` and `name` at the top level.
   fields_dict[bigquery_util.AvroConstants.NAME] = 'TBD'
@@ -244,7 +245,7 @@ def _convert_schema_to_avro_dict(schema):
 
 
 def convert_table_schema_to_json_avro_schema(schema):
-  # type: (bigquery.TableSchema) -> str
+  # type: (beam_bigquery.TableSchema) -> str
   """Returns the Avro equivalent of the given `schema` in json format.
 
   For writing to Avro files, the only piece that is different is the schema. In
@@ -309,9 +310,9 @@ def convert_table_schema_to_json_avro_schema(schema):
   Args:
     schema: This is the BigQuery table schema that is generated from input VCFs.
   """
-  if not isinstance(schema, bigquery.TableSchema):
+  if not isinstance(schema, beam_bigquery.TableSchema):
     raise ValueError(
-        'Expected an instance of bigquery.TableSchema got {}'.format(
+        'Expected an instance of beam_bigquery.TableSchema got {}'.format(
             type(schema)))
   schema_dict = _convert_schema_to_avro_dict(schema)
   json_str = json.dumps(schema_dict)
@@ -329,17 +330,26 @@ def _add_bq_field(field):
   return sub_schema
 
 def convert_table_schema_to_json_bq_schema(schema):
-  # type: (bigquery.TableSchema) -> str
+  # type: (beam_bigquery.TableSchema) -> str
   """Returns the Bigquery equivalent of the given `schema` in json format."""
-  if not isinstance(schema, bigquery.TableSchema):
+  if not isinstance(schema, beam_bigquery.TableSchema):
     raise ValueError(
-        'Expected an instance of bigquery.TableSchema got {}'.format(
+        'Expected an instance of beam_bigquery.TableSchema got {}'.format(
             type(schema)))
   return json.dumps([_add_bq_field(elem) for elem in schema.fields])
 
+def convert_table_schema_to_bq_schema(schema):
+  # type: (beam_bigquery.TableSchema) -> str
+  """Returns the Bigquery equivalent of the given `schema` in json format."""
+  if not isinstance(schema, beam_bigquery.TableSchema):
+    raise ValueError(
+        'Expected an instance of beam_bigquery.TableSchema got {}'.format(
+            type(schema)))
+  return [bigquery.schema.SchemaField.from_api_repr(_add_bq_field(elem)) for elem in schema.fields]
+
 
 def generate_header_fields_from_schema(schema, allow_incompatible_schema=False):
-  # type: (bigquery.TableSchema, bool) -> vcf_header_io.VcfHeader
+  # type: (beam_bigquery.TableSchema, bool) -> vcf_header_io.VcfHeader
   """Returns header fields converted from BigQuery schema.
 
   This is a best effort reconstruction of header fields. Only INFO and FORMAT
@@ -370,7 +380,7 @@ def generate_header_fields_from_schema(schema, allow_incompatible_schema=False):
 
 
 def _add_format_fields(schema, formats, allow_incompatible_schema=False):
-  # type: (bigquery.TableFieldSchema, Dict[str, _Format], bool) -> None
+  # type: (beam_bigquery.TableFieldSchema, Dict[str, _Format], bool) -> None
   for field in schema.fields:
     if field.name in _CONSTANT_CALL_FIELDS:
       continue
@@ -394,7 +404,7 @@ def _add_format_fields(schema, formats, allow_incompatible_schema=False):
 
 
 def _add_info_fields(field, infos, allow_incompatible_schema=False):
-  # type: (bigquery.TableFieldSchema, Dict[str, _Info], bool) -> None
+  # type: (beam_bigquery.TableFieldSchema, Dict[str, _Info], bool) -> None
   if field.name == bigquery_util.ColumnKeyConstants.ALTERNATE_BASES:
     _add_info_fields_from_alternate_bases(field,
                                           infos,
@@ -421,7 +431,7 @@ def _add_info_fields(field, infos, allow_incompatible_schema=False):
 def _add_info_fields_from_alternate_bases(schema,
                                           infos,
                                           allow_incompatible_schema=False):
-  # type: (bigquery.TableFieldSchema, Dict[str, _Info], bool) -> None
+  # type: (beam_bigquery.TableFieldSchema, Dict[str, _Info], bool) -> None
   """Adds schema nested fields in alternate bases to `infos`.
 
   Notice that the validation of field mode is skipped for reserved fields since
@@ -459,7 +469,7 @@ def _add_info_fields_from_alternate_bases(schema,
 
 
 def _validate_reserved_field(field_schema, reserved_definition):
-  # type: (bigquery.TableFieldSchema, Union[_Format, _Info]) -> None
+  # type: (beam_bigquery.TableFieldSchema, Union[_Format, _Info]) -> None
   """Validates the reserved field.
 
   Raises:
