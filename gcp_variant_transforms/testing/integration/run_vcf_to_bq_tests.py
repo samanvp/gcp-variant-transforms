@@ -87,7 +87,7 @@ class VcfToBQTestCase(run_tests_common.TestCaseInterface):
     for k, v in kwargs.iteritems():
       value = v
       if isinstance(v, basestring):
-        value = v.format(TABLE_NAME=dataset_table)
+        value = v.format(TABLE_NAME=full_table_id)
       args.append('--{} {}'.format(k, value))
     self.run_test_command = run_tests_common.form_command(
         context.project,
