@@ -664,6 +664,7 @@ class PySamParser(VcfParser):
       if phaseset is None and sample.phased and len(genotype) > 1:
         phaseset = DEFAULT_PHASESET_VALUE
       encoded_name = self._lookup_encoded_sample_name(name)
-      calls.append(VariantCall(encoded_name, genotype, phaseset, info))
+      if set(genotype) != {0}:
+        calls.append(VariantCall(encoded_name, genotype, phaseset, info))
 
     return calls

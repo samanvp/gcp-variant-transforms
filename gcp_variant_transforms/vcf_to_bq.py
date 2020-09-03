@@ -322,6 +322,9 @@ def _merge_headers(known_args, pipeline_args,
                    pipeline_mode, avro_root_path, annotated_vcf_pattern=None):
   # type: (str, argparse.Namespace, List[str], int, str) -> None
   """Merges VCF headers using beam based on pipeline_mode."""
+  # To avoid merge_header pipeline when representative_header_file is set
+  if known_args.representative_header_file:
+    return
   options = pipeline_options.PipelineOptions(pipeline_args)
 
   # Always run pipeline locally if data is small.
@@ -555,12 +558,13 @@ def run(argv=None):
         _record_newly_created_table(table_name)
         logging.info('Integer range partitioned table %s was created.',
                      table_name)
-    if not known_args.append:
-      _record_newly_created_table(
-          sample_info_table_schema_generator.create_sample_info_table(
-              known_args.output_table))
+    # To avoid merge_header pipeline when representative_header_file is set
+    #if not known_args.append:
+    #  _record_newly_created_table(
+    #      sample_info_table_schema_generator.create_sample_info_table(
+    #          known_args.output_table))
 
-    suffixes.append(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
+    #suffixes.append(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
     load_avro = avro_util.LoadAvro(
         avro_root_path, known_args.output_table, suffixes, False)
     not_empty_variant_suffixes = load_avro.start_loading()
@@ -570,7 +574,7 @@ def run(argv=None):
                                                     suffix))
     # Remove sample_info table from both lists to avoid duplicating it when
     # --sample_lookup_optimized_output_table flag is set
-    suffixes.remove(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
+    #suffixes.remove(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
     if sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX in\
         not_empty_variant_suffixes:
       not_empty_variant_suffixes.remove(
@@ -585,7 +589,7 @@ def run(argv=None):
                  avro_root_path)
     raise e
   else:
-    logging.warning('All AVRO files were successfully loaded to BigQuery.')
+    logging.info('All AVRO files were successfully loaded to BigQuery.')
     if known_args.keep_intermediate_avro_files:
       logging.info('Since "--keep_intermediate_avro_files" flag is set, the '
                    'AVRO files are kept and stored at: %s', avro_root_path)
@@ -630,8 +634,10 @@ if __name__ == '__main__':
   try:
     run()
   except Exception as e:
+    logging.warning('An exception was raised while importing VCF files: %s',
+                    str(e))
     if _newly_created_tables:
-      logging.info('Trying to delete all newly created tables.')
+      logging.warning('Trying to delete all newly created tables.')
       bigquery_util.rollback_newly_created_tables(_newly_created_tables)
     else:
       logging.warning(
