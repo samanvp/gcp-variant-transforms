@@ -202,6 +202,7 @@ class VepRunner():
                     'disks': [
                         {
                             'name': 'vep',
+                            'type': 'pd-ssd',
                             'sizeGb': _MINIMUM_DISK_SIZE_GB
                         }
                     ],
