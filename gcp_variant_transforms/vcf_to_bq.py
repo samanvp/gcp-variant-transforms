@@ -459,8 +459,8 @@ def run(argv=None):
   avro_root_path = _get_avro_root_path(beam_pipeline_options)
   # Starts a pipeline to merge VCF headers in beam if the total files that
   # match the input pattern exceeds _SMALL_DATA_THRESHOLD
-  _merge_headers(known_args, pipeline_args,
-                 pipeline_mode, avro_root_path, annotated_vcf_pattern)
+  #_merge_headers(known_args, pipeline_args,
+  #               pipeline_mode, avro_root_path, annotated_vcf_pattern)
 
 
   # Retrieve merged headers prior to launching the pipeline. This is needed
