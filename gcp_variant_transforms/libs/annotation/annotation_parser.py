@@ -143,9 +143,13 @@ class Parser():
       ValueError: In a few other error cases, the exception message should be
         descriptive enough.
     """
-    annotations = extract_annotation_list_with_alt(annotation_str)
-    annotation_map = self._create_map(annotations)
-    alt_ind = self._find_alt_index(annotation_map)
+    try:
+      annotations = extract_annotation_list_with_alt(annotation_str)
+      annotation_map = self._create_map(annotations)
+      alt_ind = self._find_alt_index(annotation_map)
+    except ValueError as e:
+      raise InvalidAlleleNumValue(e) from e
+
     return alt_ind, annotation_map
 
   def _create_map(self, annotations):
