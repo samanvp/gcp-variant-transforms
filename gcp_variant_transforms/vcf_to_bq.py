@@ -563,12 +563,12 @@ def run(argv=None):
         _record_newly_created_table(table_name)
         logging.info('Integer range partitioned table %s was created.',
                      table_name)
-    if not known_args.append:
-      _record_newly_created_table(
-          sample_info_table_schema_generator.create_sample_info_table(
-              known_args.output_table))
+    #if not known_args.append:
+    #  _record_newly_created_table(
+    #      sample_info_table_schema_generator.create_sample_info_table(
+    #          known_args.output_table))
 
-    suffixes.append(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
+    #suffixes.append(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
     load_avro = avro_util.LoadAvro(
         avro_root_path, known_args.output_table, suffixes, False)
     not_empty_variant_suffixes = load_avro.start_loading()
@@ -578,7 +578,7 @@ def run(argv=None):
                                                     suffix))
     # Remove sample_info table from both lists to avoid duplicating it when
     # --sample_lookup_optimized_output_table flag is set
-    suffixes.remove(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
+    #suffixes.remove(sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX)
     if sample_info_table_schema_generator.SAMPLE_INFO_TABLE_SUFFIX in\
         not_empty_variant_suffixes:
       not_empty_variant_suffixes.remove(
