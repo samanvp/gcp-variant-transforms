@@ -141,7 +141,8 @@ class VepRunner():
     self._species = species
     self._assembly = assembly
     self._vep_image_uri = vep_image_uri
-    self._vep_cache_path = self._make_vep_cache_path(vep_cache_path)
+    self._vep_cache_path = VepRunner.make_vep_cache_path(
+        vep_cache_path, species, assembly)
     self._vep_num_fork = vep_num_fork
     self._input_pattern = input_pattern
     self._output_dir = output_dir
@@ -154,11 +155,12 @@ class VepRunner():
     self._operation_name_to_io_infos = {}
     self._operation_name_to_logs = {}
 
-  def _make_vep_cache_path(self, vep_cache_path):
-    # type: (str) -> str
+  @staticmethod
+  def _make_vep_cache_path(vep_cache_path, species, assembly):
+    # type: (str, str, str) -> str
     if not vep_cache_path:
-      vep_cache_path = VepRunner._VEP_CACHE_BASE.format(species=self._species,
-                                                        assembly=self._assembly)
+      vep_cache_path = VepRunner._VEP_CACHE_BASE.format(species=species,
+                                                        assembly=assembly)
     return vep_cache_path
 
   def get_output_pattern(self):
